@@ -10,8 +10,8 @@ import sys
 
 import logging
 logging.basicConfig(
-    format='%(asctime)s %(levelname)s: %(message)s', 
-    datefmt='%m/%d/%Y %I:%M:%S %p', 
+    format='%(asctime)s %(levelname)s: %(message)s',
+    datefmt='%m/%d/%Y %I:%M:%S %p',
     level=logging.INFO
 )
 
@@ -25,7 +25,7 @@ while True:
             logging.info("Trying to connect...")
             for adv in ble.start_scan(ProvideServicesAdvertisement):
                 if UARTService in adv.services:
-                    if adv.complete_name != sys.argv[1]:                        
+                    if adv.complete_name != sys.argv[1]:
                         pass
                     logging.info("Advertisement: {}".format(adv))
                     uart_connection = ble.connect(adv)
@@ -35,14 +35,15 @@ while True:
 
         if uart_connection and uart_connection.connected:
             uart_service = uart_connection[UARTService]
-            s = random.choice(("buzz","fizz"))
+            # s = random.choice(("buzz","fizz"))
+            s = "buzz"
             logging.info("Chose {} to send to board".format(s))
             uart_service.write(s.encode("utf-8"))
             uart_service.write(b'\n')
             logging.info(uart_service.readline().decode("utf-8"))
             uart_connection = None
             logging.info("Going to sleep")
-            time.sleep(1*60) 
+            time.sleep(15 * 60)
     except Exception as e:
         logging.error("Caught error: {}".format(repr(e)))
         time.sleep(1)
