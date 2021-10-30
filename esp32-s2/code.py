@@ -33,26 +33,6 @@ def historical_url(struct):
     return HISTORICAL_URL % (secrets["usgs_id"], old_start.year, old_start.month, old_start.day, old_start.hour, old_start.minute, old_end.year, old_end.month, old_end.day, old_end.hour, old_end.minute)
 
 
-print("Connecting to %s" % secrets["ssid"])
-wifi.radio.connect(secrets["ssid"], secrets["password"])
-print("Connected to %s!" % secrets["ssid"])
-print("My IP address is", wifi.radio.ipv4_address)
-
-pool = socketpool.SocketPool(wifi.radio)
-requests = adafruit_requests.Session(pool, ssl.create_default_context())
-
-# Set your Adafruit IO Username and Key in secrets.py
-# (visit io.adafruit.com if you need to create an account,
-# or if you need your Adafruit IO key.)
-AIO_USERNAME = secrets["aio_username"]
-AIO_KEY = secrets["aio_key"]
-
-# Initialize an Adafruit IO HTTP API object
-io = IO_HTTP(AIO_USERNAME, AIO_KEY, requests)
-log_feed = io.get_feed("cup%d-dot-log" % secrets["participant_id"])
-log_valid = False
-
-
 def log(message):
     """log sends the string to adafruit io"""
     if log_valid:
@@ -82,12 +62,43 @@ def buzz(seconds):
 
 
 current_hour = 0
+log_valid = False
 try:
-    log_valid = True
-    now_discharge = discharge(JSON_WATER_URL)
+    print("Connecting to %s" % secrets["ssid"])
+    wifi.radio.connect(secrets["ssid"], secrets["password"])
+    print("Connected to %s!" % secrets["ssid"])
+    print("My IP address is", wifi.radio.ipv4_address)
 
+    pool = socketpool.SocketPool(wifi.radio)
+    requests = adafruit_requests.Session(pool, ssl.create_default_context())
+
+    # Set your Adafruit IO Username and Key in secrets.py
+    # (visit io.adafruit.com if you need to create an account,
+    # or if you need your Adafruit IO key.)
+    AIO_USERNAME = secrets["aio_username"]
+    AIO_KEY = secrets["aio_key"]
+
+    # Initialize an Adafruit IO HTTP API object
+    io = IO_HTTP(AIO_USERNAME, AIO_KEY, requests)
+    log_feed = io.get_feed("cup%d-dot-log" % secrets["participant_id"])
+    log_valid = True
+
+    # Figure out what time it is and go to sleep until morning if appropriate
     current_time = io.receive_time()
     current_hour = current_time.tm_hour
+    print("adafruit current time: %s:%s" % (current_hour, current_time.tm_min))
+    if current_hour >= secrets["sleep_hour"] or current_hour < secrets["wake_hour"]:
+        if current_hour > 12:
+            # if the current hour is before midnight, the wake hour is actually tomorrow
+            secrets["wake_hour"] += 24
+        sleep_hours = secrets["wake_hour"] - current_hour
+        alarm_time = sleep_hours * 60 * 60
+        log("it's bed time! going to sleep for %d hours" % sleep_hours)
+        time_alarm = alarm.time.TimeAlarm(
+            monotonic_time=time.monotonic() + alarm_time)
+        alarm.exit_and_deep_sleep_until_alarms(time_alarm)
+
+    now_discharge = discharge(JSON_WATER_URL)
     old_discharge = discharge(historical_url(current_time))
 
     old_buzz_seconds = math.sqrt(old_discharge) * secrets["scaling_factor"]
@@ -101,24 +112,13 @@ try:
 except Exception as e:
     print(repr(e))
     if log_valid:
+        print("Have a valid logging connection so writing to logs too.")
         log(repr(e))
 
 
 # Deep sleep until the alarm goes off. Then restart the program.
 alarm_time = 60 * 60
-if current_hour >= secrets["sleep_hour"] or current_hour < secrets["wake_hour"]:
-    if current_hour > 12:
-        # if the current hour is before midnight, the wake hour is actually tomorrow
-        secrets["wake_hour"] += 24
-    sleep_hours = secrets["wake_hour"] - current_hour
-    alarm_time = sleep_hours * 60 * 60
-    print("it's bed time! going to sleep for %d hours" % sleep_hours)
-else:
-    print("napping...")
-
+print("napping...")
 time_alarm = alarm.time.TimeAlarm(
     monotonic_time=time.monotonic() + alarm_time)
 alarm.exit_and_deep_sleep_until_alarms(time_alarm)
-
-
-print("done")
